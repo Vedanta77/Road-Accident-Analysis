@@ -104,7 +104,7 @@ A map visual plotting accident locations using latitude and longitude to identif
 - DAX  
 
 ## Dashboard
-<img width="1328" height="743" alt="road accidents" src="https://github.com/user-attachments/assets/31789005-0084-4861-b480-652da7a64848" />
+<img width="1328" height="743" alt="road accidents" src="DASHBOARD.png" />
 
 
 
