@@ -1,261 +1,81 @@
 -- ------------------------------------------------------------
 -- ROAD ACCIDENT ANALYSIS - SQL QUERIES 
--- Table assumed: road_accidents
--- Common columns assumed:
---   accident_id, accident_date (date), accident_time (time),
---   latitude, longitude, vehicle_type, road_type, urban_rural,
---   lighting, weather, fatalities, serious_injuries, slight_injuries,
---   total_casualties (optional)
--- ------------------------------------------------------------
+select * from road_accident;
 
--- 0. Helper: if total_casualties not present, create a view/CTE to compute it
--- Use this CTE in following queries as "acc"
-WITH acc AS (
-  SELECT
-    accident_id,
-    accident_date,
-    accident_time,
-    EXTRACT(YEAR FROM accident_date)::INT AS year,
-    EXTRACT(MONTH FROM accident_date)::INT AS month,
-    EXTRACT(DOW FROM accident_date)::INT AS weekday,        -- 0 = Sunday ... 6 = Saturday
-    EXTRACT(HOUR FROM accident_time)::INT AS hour_of_day,
-    latitude,
-    longitude,
-    COALESCE(vehicle_type, 'Unknown') AS vehicle_type,
-    COALESCE(road_type, 'Unknown') AS road_type,
-    COALESCE(urban_rural, 'Unknown') AS urban_rural,
-    COALESCE(lighting, 'Unknown') AS lighting,
-    COALESCE(weather, 'Unknown') AS weather,
-    COALESCE(fatalities,0) AS fatalities,
-    COALESCE(serious_injuries,0) AS serious_injuries,
-    COALESCE(slight_injuries,0) AS slight_injuries,
-    (COALESCE(fatalities,0) + COALESCE(serious_injuries,0) + COALESCE(slight_injuries,0)) AS total_casualties
-  FROM road_accidents
-)
+--Total Casulties 2021-2022--
+select sum(number_of_casualties) as CY_Casualties
+from road_accident
+where YEAR(accident_date) = '2022' AND road_surface_conditions= 'Dry'
 
--- 1) Overall KPIs (CY = current year placeholder)
-SELECT
-  COUNT(DISTINCT accident_id) AS total_accidents,
-  SUM(total_casualties) AS total_casualties,
-  SUM(fatalities) AS total_fatalities,
-  SUM(serious_injuries) AS total_serious_injuries,
-  SUM(slight_injuries) AS total_slight_injuries
-FROM acc
-WHERE year = :YEAR;   -- replace :YEAR with required year (e.g., 2022)
+-- CY accidents 2022--
+SELECT COUNT(DISTINCT accident_index) as CY_Accidents
+from road_accident
+where year(accident_date)='2022';
 
+-- fatal casualties of CY 2022--
+SELECT sum(number_of_casualties) as CY_Fatal_Casualties
+from road_accident
+where year(accident_date)='2022' and accident_severity = 'Fatal';
 
--- 2) Monthly trend (CY) - casualties per month
--- Replace :YEAR with year value
-SELECT
-  month,
-  SUM(total_casualties) AS casualties,
-  SUM(fatalities) AS fatalities,
-  SUM(serious_injuries) AS serious_injuries,
-  SUM(slight_injuries) AS slight_injuries
-FROM acc
-WHERE year = :YEAR
-GROUP BY month
-ORDER BY month;
+--serious casualties of 2022 CY--
+SELECT sum(number_of_casualties) as CY_Serious_Casualties
+from road_accident
+where year(accident_date)='2022' and accident_severity = 'Serious';
+
+--Slight Casualties CY 2022--
+SELECT sum(number_of_casualties) as CY_Slight_Casualties
+from road_accident
+where year(accident_date)='2022' and accident_severity = 'Slight';
+
+--Percentage of slight accident as compared to total accidents--
+SELECT cast(sum(number_of_casualties) as decimal(10,2))* 100/ 
+(Select cast(sum(number_of_casualties) as decimal(10,2)) from road_accident) as PCT 
+from road_accident
+where accident_severity = 'Slight';
+
+--Percentage of serious accident as compared to total accidents--
+SELECT cast(sum(number_of_casualties) as decimal(10,2))* 100/ 
+(Select cast(sum(number_of_casualties) as decimal(10,2)) from road_accident) as PCT 
+from road_accident
+where accident_severity = 'Serious';
+
+--Percentage of Fatal accident as compared to total accidents--
+SELECT cast(sum(number_of_casualties) as decimal(10,2))* 100/ 
+(Select cast(sum(number_of_casualties) as decimal(10,2)) from road_accident) as PCT 
+from road_accident
+where accident_severity = 'Fatal';
 
 
--- 3) Year-over-Year monthly comparison (CY vs PY)
--- Replace :YEAR with current year
-SELECT
-  month,
-  SUM(CASE WHEN year = :YEAR THEN total_casualties ELSE 0 END) AS casualties_cy,
-  SUM(CASE WHEN year = (:YEAR - 1) THEN total_casualties ELSE 0 END) AS casualties_py,
-  CASE
-    WHEN SUM(CASE WHEN year = (:YEAR - 1) THEN total_casualties ELSE 0 END) = 0 THEN NULL
-    ELSE ROUND(
-      (SUM(CASE WHEN year = :YEAR THEN total_casualties ELSE 0 END) -
-       SUM(CASE WHEN year = (:YEAR - 1) THEN total_casualties ELSE 0 END))::NUMERIC
-       / SUM(CASE WHEN year = (:YEAR - 1) THEN total_casualties ELSE 0 END)::NUMERIC * 100, 2)
-  END AS yoy_pct_change
-FROM acc
-WHERE year IN (:YEAR, :YEAR - 1)
-GROUP BY month
-ORDER BY month;
+--SECONDARY KPIS--
+SELECT* FROM road_accident;
+
+-- month wise total no. of casualties in 2022--
+select datename(month, accident_date) as month_name , sum(number_of_casualties) as CY_Casualties
+from road_accident
+where year(accident_date) = '2022'
+group by datename(month, accident_date)
+
+--casualties for road--
+select road_type, sum(number_of_casualties) as CY_Casualties
+from road_accident
+where year(accident_date) ='2022'
+group by road_type
 
 
--- 4) Casualties by vehicle type (percentage share)
-SELECT
-  vehicle_type,
-  SUM(total_casualties) AS casualties,
-  ROUND(SUM(total_casualties) * 100.0 / NULLIF((SELECT SUM(total_casualties) FROM acc WHERE year = :YEAR),0), 2) AS pct_share
-FROM acc
-WHERE year = :YEAR
-GROUP BY vehicle_type
-ORDER BY casualties DESC;
+-- casualties urban or rural area--
+select urban_or_rural_area, sum(number_of_casualties) as Total_Casualties,cast(sum(number_of_casualties) as decimal(10,2)) *100 / 
+(select cast(sum(number_of_casualties) as decimal(10,2)) from road_accident where year(accident_date)= '2022') as PCT
+from road_accident 
+where year(accident_date)= '2022'
+group by urban_or_rural_area
 
 
--- 5) Casualties by road type
-SELECT
-  road_type,
-  SUM(total_casualties) AS casualties,
-  SUM(fatalities) AS fatalities
-FROM acc
-WHERE year = :YEAR
-GROUP BY road_type
-ORDER BY casualties DESC;
+-- top 10 casualties local authority wise--
+select TOP 10 local_authority, sum(number_of_casualties) as Total_Casualties
+from road_accident
+group by local_authority 
+order by Total_Casualties desc
 
-
--- 6) Urban vs Rural comparison
-SELECT
-  urban_rural,
-  COUNT(DISTINCT accident_id) AS accidents,
-  SUM(total_casualties) AS casualties
-FROM acc
-WHERE year = :YEAR
-GROUP BY urban_rural
-ORDER BY casualties DESC;
-
-
--- 7) Day vs Night (assuming lighting values capture day/night)
-SELECT
-  lighting,
-  COUNT(DISTINCT accident_id) AS accidents,
-  SUM(total_casualties) AS casualties
-FROM acc
-WHERE year = :YEAR
-GROUP BY lighting
-ORDER BY casualties DESC;
-
-
--- 8) Hourly trend (orders -> accidents) to find peak hours
-SELECT
-  hour_of_day,
-  COUNT(DISTINCT accident_id) AS accidents,
-  SUM(total_casualties) AS casualties
-FROM acc
-WHERE year = :YEAR
-GROUP BY hour_of_day
-ORDER BY hour_of_day;
-
-
--- 9) Top N hotspot locations (by casualties)
--- If many accidents share same lat/long, grouping by rounded coords helps cluster hotspots.
-SELECT
-  ROUND(latitude::numeric, 3) AS lat_round,
-  ROUND(longitude::numeric, 3) AS lon_round,
-  COUNT(*) AS accidents_count,
-  SUM(total_casualties) AS casualties
-FROM acc
-WHERE year = :YEAR AND latitude IS NOT NULL AND longitude IS NOT NULL
-GROUP BY lat_round, lon_round
-ORDER BY casualties DESC
-LIMIT 20;
-
-
--- 10) Top streets/locations if you have a 'location' or 'street' column
--- SELECT location, COUNT(*) AS accidents_count, SUM(total_casualties) AS casualties
--- FROM acc
--- WHERE year = :YEAR
--- GROUP BY location
--- ORDER BY casualties DESC
--- LIMIT 15;
-
-
--- 11) Severity breakdown (fatal vs serious vs slight) by month
-SELECT
-  month,
-  SUM(fatalities) AS fatalities,
-  SUM(serious_injuries) AS serious_injuries,
-  SUM(slight_injuries) AS slight_injuries
-FROM acc
-WHERE year = :YEAR
-GROUP BY month
-ORDER BY month;
-
-
--- 12) Vehicle type vs severity matrix (top vehicle types)
-SELECT
-  vehicle_type,
-  SUM(fatalities) AS fatalities,
-  SUM(serious_injuries) AS serious_injuries,
-  SUM(slight_injuries) AS slight_injuries,
-  SUM(total_casualties) AS total_casualties
-FROM acc
-WHERE year = :YEAR
-GROUP BY vehicle_type
-ORDER BY total_casualties DESC
-LIMIT 20;
-
-
--- 13) Accident counts by weekday name (Sunday = 0 to Saturday = 6)
-SELECT
-  CASE weekday
-    WHEN 0 THEN 'Sunday'
-    WHEN 1 THEN 'Monday'
-    WHEN 2 THEN 'Tuesday'
-    WHEN 3 THEN 'Wednesday'
-    WHEN 4 THEN 'Thursday'
-    WHEN 5 THEN 'Friday'
-    WHEN 6 THEN 'Saturday'
-  END AS weekday_name,
-  COUNT(DISTINCT accident_id) AS accidents,
-  SUM(total_casualties) AS casualties
-FROM acc
-WHERE year = :YEAR
-GROUP BY weekday
-ORDER BY weekday;
-
-
--- 14) Yearly summary (multi-year overview)
-SELECT
-  year,
-  COUNT(DISTINCT accident_id) AS total_accidents,
-  SUM(total_casualties) AS total_casualties,
-  SUM(fatalities) AS total_fatalities
-FROM acc
-GROUP BY year
-ORDER BY year;
-
-
--- 15) Percentage change year-over-year for total casualties
-WITH yearly AS (
-  SELECT year, SUM(total_casualties) AS casualties
-  FROM acc
-  GROUP BY year
-)
-SELECT
-  y1.year,
-  y1.casualties,
-  y2.casualties AS prev_year_casualties,
-  CASE WHEN y2.casualties IS NULL THEN NULL
-    ELSE ROUND((y1.casualties - y2.casualties)::NUMERIC / NULLIF(y2.casualties,0) * 100, 2)
-  END AS yoy_pct_change
-FROM yearly y1
-LEFT JOIN yearly y2 ON y1.year = y2.year + 1
-ORDER BY y1.year;
-
-
--- 16) Filtered analysis example: casualties for a specific vehicle type and month
--- Replace :VEHICLE, :YEAR, :MONTH
-SELECT
-  month,
-  SUM(total_casualties) AS casualties
-FROM acc
-WHERE vehicle_type = :VEHICLE AND year = :YEAR AND month = :MONTH
-GROUP BY month
-ORDER BY month;
-
-
--- 17) Basic data quality checks
--- a) Null / missing coordinate rows
-SELECT COUNT(*) AS missing_coords
-FROM acc
-WHERE latitude IS NULL OR longitude IS NULL;
-
--- b) Rows with negative or implausible casualty numbers
-SELECT *
-FROM acc
-WHERE fatalities < 0 OR serious_injuries < 0 OR slight_injuries < 0
-LIMIT 50;
-
--- c) Rows with accident_date outside expected range (example)
-SELECT COUNT(*) AS out_of_range_dates
-FROM acc
-WHERE accident_date < '2000-01-01' OR accident_date > CURRENT_DATE;
 
 
 -- End of script
